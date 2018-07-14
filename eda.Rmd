@@ -1,0 +1,1178 @@
+---
+title: "Detailed EDA + Recommendation Sys: DonorChoose"
+author: "Ankur Singh"
+date: "May 5, 2018"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+---
+
+<center><img src="https://dreamhost.donorschoose.org/wp-content/uploads/2016/03/BSD_Social_MakeEveryDay-32-1.png"></center>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE,message=FALSE)
+```
+
+```{r,echo=FALSE,results='hide'}
+# general data manipulation
+library('dplyr') # data manipulation
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tibble') # data wrangling
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+
+# visualization
+library(ggplot2)
+library(plotly)
+library(knitr)
+library(ggthemes)
+library(tidytext)
+library(highcharter)
+library(wordcloud)
+library(igraph)
+library(ggraph)
+library(qgraph)
+library(visNetwork)
+library(widyr)
+```
+
+```{r,echo=FALSE,results='hide'}
+donations <- as.tibble(fread("../input/Donations.csv"))
+
+donors <- as.tibble(fread("../input/Donors.csv"))
+
+projects <- read_csv("../input/Projects.csv",col_types = cols(
+   X1 = col_integer(),
+  `Project ID` = col_character(),
+  `School ID` = col_character(),
+  `Teacher ID` = col_character(),
+  `Teacher Project Posted Sequence` = col_integer(),
+  `Project Type` = col_character(),
+  `Project Title` = col_character(),
+  `Project Essay` = col_character(),
+  `Project Subject Category Tree` = col_character(),
+  `Project Subject Subcategory Tree` = col_character(),
+  `Project Grade Level Category` = col_character(),
+  `Project Resource Category` = col_character(),
+  `Project Cost` = col_character(),
+  `Project Posted Date` = col_date(format = ""),
+  `Project Current Status` = col_character(),
+  `Project Fully Funded Date` = col_date(format = "")))
+
+resources <- read_csv("../input/Resources.csv")
+
+schools <- read_csv("../input/Schools.csv")
+
+teachers <- read_csv("../input/Teachers.csv")
+```
+
+# A. What is DonorsChoose 
+
+Founded in 2000 by a Bronx history teacher, DonorsChoose.org has raised $685 million for America's classrooms. Teachers at three-quarters of all the public schools in the U.S. have come to DonorsChoose.org to request what their students need, making DonorsChoose.org the leading platform for supporting public education.
+
+To date, 3 million people and partners have funded 1.1 million DonorsChoose.org projects. But teachers still spend more than a billion dollars of their own money on classroom materials. To get students what they need to learn, the team at DonorsChoose.org needs to be able to connect donors with the projects that most inspire them.
+
+In the second Kaggle Data Science for Good challenge, DonorsChoose.org, in partnership with Google.org, is inviting the community to help them pair up donors to the classroom requests that will most motivate them to make an additional gift. To support this challenge, DonorsChoose.org has supplied anonymized data on donor giving from the past five years. The winning methods will be implemented in DonorsChoose.org email marketing campaigns.
+
+<center><b> Overview of this Kernel </b></center>
+
+<center><img src="https://s31.postimg.cc/bkxs2wawr/collage.png"></center>
+
+# File structure and content {.tabset .tabset-fade .tabset-pills}
+
+As a first step let's have an overview of the data sets using the *summary* and *glimpse* tools.
+
+## Donations
+
+```{r}
+# summary(donations)
+```
+
+```{r}
+glimpse(donations)
+```
+
+Observation: 
+
+- There are **4687884** unique Donation ID. 
+- The *Median* of Donation Amount is **25 USD**. The *max* Donation Amount is **60000 USD**.
+- There are no missing values in this data.
+
+## Donors
+
+```{r}
+# summary(donors)
+```
+
+```{r}
+glimpse(donors)
+```
+
+Observation: 
+
+- There are **2122640** unique Donor ID.
+- In this donor data, The *Donor City, Donor State* is given. It has given that donor is teacher or not.
+- There are no missing values in this data.
+
+## Projects
+
+```{r}
+# summary(projects)
+```
+
+```{r}
+glimpse(projects)
+```
+
+Observation: 
+
+- There are **1208651** unique Project ID.
+- In this project data, The *Project Type, Project Title, Project Essay, Project Cost and Project Current Status* is given.
+- There are no missing values in this data.
+
+## Resources
+
+```{r}
+# summary(resources)
+```
+
+```{r}
+glimpse(resources)
+```
+
+Observation: 
+
+- There are **7210448** unique Resource Item Name.
+- There are missing values in this data.
+
+## Schools
+
+```{r}
+# summary(schools)
+```
+
+```{r}
+glimpse(schools)
+```
+
+Observation: 
+
+- There are **72993** unique School ID.
+- In this data, The **School Name, School Metro Type, School State, School City, School County and School District** are given.
+- There are no missing values in this data.
+
+## Teachers
+
+```{r}
+# summary(teachers)
+```
+
+```{r}
+glimpse(teachers)
+```
+
+Observation: 
+
+- There are **72993** unique Teacher ID.
+- There are no missing values in this data.
+
+## Missing values
+
+```{r}
+sum(is.na(donations))
+sum(is.na(donors))
+sum(is.na(projects))
+sum(is.na(resources))
+sum(is.na(schools))
+sum(is.na(teachers))
+```
+
+# B. Individual feature Analysis
+
+## Donation Amount
+
+```{r}
+donation_amount_distribution <- donations %>% filter(`Donation Amount`<= 250)
+hchart(hist(donation_amount_distribution$`Donation Amount`, plot = FALSE), color = "#66CCFF", name='Amount') %>% 
+                                    hc_title(text = "Donation Amount Distribution", color = "#66CCFF") %>%
+                                    hc_add_theme(hc_theme_ffx())
+```
+
+
+Observation: 
+
+- **25% Donation** amount were between **0-10 USD** 
+- **55**% Donation amount were between **0-30 USD**. 
+- This means number of donors(**more than 50%**) were donating money less then **30 USD** at a time. 
+
+
+## Donation Included Optional Donation 
+
+```{r}
+
+donation_include_optional_donation  <-  donations %>%  
+                                        filter(!is.na(`Donation Included Optional Donation`)) %>%
+                                        group_by(`Donation Included Optional Donation`) %>%
+                                        summarise(Total = n()) %>%
+                                        arrange(desc(Total)) %>%
+                                        ungroup() %>%
+                                        mutate(`Donation Included Optional Donation` = reorder(`Donation Included Optional Donation`,Total)) %>%
+                                        head(10)
+highchart() %>% 
+ hc_chart(type = "pie") %>% 
+ hc_add_theme(hc_theme_ffx()) %>%
+ hc_title(text = "Donation Included Optional Donation ") %>%
+ hc_add_series_labels_values(labels = donation_include_optional_donation$`Donation Included Optional Donation`, values = donation_include_optional_donation$Total, name='Optional Donation') 
+
+```
+
+
+Observation: 
+
+- **85%** donation included optional donation.
+
+
+## Donor Is Teacher
+
+```{r}
+donor_teacher  <-  donors %>%  
+                   filter(!is.na(`Donor Is Teacher`)) %>%
+                   group_by(`Donor Is Teacher`) %>%
+                   summarise(Total = n()) %>%
+                   arrange(desc(Total)) %>%
+                   ungroup() %>%
+                   mutate(`Donor Is Teacher` = reorder(`Donor Is Teacher`,Total)) %>%
+                   head(10)
+donor_teacher
+
+```
+
+```{r}
+
+highchart() %>% 
+ hc_chart(type = "pie") %>% 
+ hc_add_theme(hc_theme_ffx()) %>%
+ hc_title(text = "Donor Is Teacher") %>%
+ hc_add_series_labels_values(labels = donor_teacher$`Donor Is Teacher`, values = donor_teacher$Total, name='Is Donor teacher') 
+
+```
+
+
+Observation: 
+
+- **90%** donors are not Teacher.
+
+
+## Donors City
+
+```{r}
+donors_by_city <-   donors %>%
+                    filter(!is.na(`Donor City`) && `Donor City`!="") %>%
+                    group_by(`Donor City`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`Donor City` = reorder(`Donor City`,Total)) %>%
+                    head(12)
+donors_by_city
+
+```
+
+```{r}
+highchart() %>% hc_xAxis(categories = donors_by_city$`Donor City`,title = list(text = "Donors City")) %>% 
+                hc_title(text = 'Donor City Frequency') %>%
+                hc_add_series(name = "Total", data = donors_by_city$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Top 3 Donor City are `Chicago`, `New York` and `Brooklyn`.
+
+
+## Donors State
+
+```{r}
+donors_by_state <-  donors %>%
+                    filter(!is.na(`Donor State`)) %>%
+                    group_by(`Donor State`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`Donor State` = reorder(`Donor State`,Total)) %>%
+                    head(12)
+donors_by_state
+
+```
+
+```{r}
+highchart() %>% hc_xAxis(categories = donors_by_state$`Donor State`,title = list(text = "Donors State")) %>% 
+                hc_title(text = 'Donor State Frequency') %>%
+                hc_add_series(name = "Total", data = donors_by_state$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Top 3 Donors State are `California`, `New York` and `Texas`. 
+
+
+## Project Type
+
+```{r}
+type_of_project <-  projects %>%
+                    filter(!is.na(`Project Type`)) %>%
+                    group_by(`Project Type`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`Project Type` = reorder(`Project Type`,Total)) %>%
+                    head(3)
+type_of_project
+
+```
+
+```{r}
+highchart() %>% hc_xAxis(categories = type_of_project$`Project Type`,title = list(text = "Project Type")) %>% 
+                hc_title(text = 'Project Type Frequency') %>%
+                hc_add_series(name = "Total", data = type_of_project$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Most Projects are `Teacher-Led` Type.
+
+
+## Project Title
+
+```{r}
+project_title <-  projects %>%
+                    filter(!is.na(`Project Title`)) %>%
+                    group_by(`Project Title`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`Project Title` = reorder(`Project Title`,Total)) %>%
+                    head(10)
+project_title
+
+```
+
+```{r}
+highchart() %>% hc_xAxis(categories = project_title$`Project Title`,title = list(text = "Project Title")) %>% 
+                hc_title(text = 'Project Title Frequency') %>%
+                hc_add_series(name = "Total", data = project_title$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Top 3 Project Title are `Flexible Seating`, `Can You Hear Me Now?` and `Technology in the Classroom`. 
+
+
+```{r}
+projects %>% 
+    unnest_tokens(word, `Project Title`) %>%
+    filter(!word %in% stop_words$word) %>%
+    count(word,sort = TRUE) %>%
+    ungroup()  %>%
+    head(50) %>%
+    with(wordcloud(word, n, max.words = 30,colors=brewer.pal(8, "Dark2")))
+
+```
+
+## Project Subject Category
+
+```{r}
+projects %>%  group_by(`Project Subject Category Tree`) %>% count() %>% 
+hchart("treemap", hcaes(x = `Project Subject Category Tree`, value = n,color = n)) %>%
+hc_title(text = "Project Subject Category Treemap") %>%
+hc_add_theme(hc_theme_ffx())
+
+```
+
+
+Observation: 
+
+- Top Project Subject Categories are `Literacy & Language`, `Math & Science`. 
+
+
+## Project Subject Subcategory
+
+```{r}
+projects %>%  group_by(`Project Subject Subcategory Tree`) %>% count() %>% 
+hchart("treemap", hcaes(x = `Project Subject Subcategory Tree`, value = n,color = n)) %>%
+hc_title(text = "Project Subject Subcategory Treemap") %>%
+hc_add_theme(hc_theme_ffx())
+
+```
+
+
+Observation: 
+
+- Top Project Subject Subcategories are `Literacy`, `Mathematics` & `Writing`.
+
+
+## Project Resource Category
+
+```{r}
+projects %>%  group_by(`Project Resource Category`) %>% count() %>% 
+hchart("treemap", hcaes(x = `Project Resource Category`, value = n,color = n)) %>%
+hc_title(text = "Project Resource Category Treemap") %>%
+hc_add_theme(hc_theme_ffx())
+
+```
+
+
+Observation: 
+
+- Top 3 Project Resource Category are `Supplies`, `Technology` and `Books`.
+
+
+## Project Posted Date
+
+```{r}
+projects %>% group_by(`Project Posted Date`) %>% 
+             summarise(Total = n()) %>% 
+             hchart("line", hcaes(x = `Project Posted Date`, y = Total)) %>%
+             hc_title(text = "Project Posted Date Timeseries") %>%
+            hc_add_theme(hc_theme_ffx())
+
+```
+
+
+Observation: 
+
+- `August`, `September`and `October` are top 3 months where most projects were posted.
+
+
+## Project Cost
+
+```{r}
+projects$`Project Cost` <- as.numeric(substring(projects$`Project Cost`, 2))
+
+project_cost_distribution <- hist(projects$`Project Cost`, plot = FALSE)
+hchart(project_cost_distribution, color = "#66CCFF") %>% 
+                                    hc_title(text = "Project Cost Distribution", color = "#66CCFF") %>%
+                                    hc_add_theme(hc_theme_ffx())
+
+```
+
+
+Observation: 
+
+- Most of projects cost were between `0-600 USD`.
+
+## Project Current Status
+
+```{r}
+project_current_status  <- projects %>%  
+                           filter(!is.na(`Project Current Status`)) %>%
+                           group_by(`Project Current Status`) %>%
+                           summarise(Total = n()) %>%
+                           arrange(desc(Total)) %>%
+                           ungroup() %>%
+                           mutate(`Project Current Status` = reorder(`Project Current Status`,Total)) %>%
+                           head(10)
+project_current_status
+```
+
+```{r}
+highchart() %>% 
+ hc_chart(type = "pie") %>% 
+ hc_add_theme(hc_theme_ffx()) %>%
+ hc_title(text = "Project Current Status") %>%
+ hc_add_series_labels_values(labels = project_current_status$`Project Current Status`, values = project_current_status$Total, name='Current Status') 
+```
+
+Observation: 
+
+- More than `80%` projects are Fully Funded.
+
+## Resource Item
+
+```{r}
+resources <- resources %>%
+             rename(ItemName = `Resource Item Name`)  
+            
+resource_item <-    resources %>%
+                    filter(!is.na(ItemName)) %>%
+                    group_by(ItemName) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(ItemName = reorder(ItemName,Total)) %>%
+                    head(10)
+resource_item
+
+```
+
+```{r}
+highchart() %>% hc_xAxis(categories = resource_item$ItemName,title = list(text = "Resource Item")) %>% 
+                hc_title(text = 'Resource Item Frequency') %>%
+                hc_add_series(name = "Total", data = resource_item$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Top 3 Resource Item are `trip`, `standard shipping` and `apple ipad mini wi-fi - tablet - ios 6 - 16 gb - 7.9`
+
+
+## Resource Quantity
+
+```{r}
+resources <- resources %>%
+             rename(ResourceQuantity = `Resource Quantity` )
+
+resource_quantity_distribution <- hist(resources$ResourceQuantity, plot = FALSE)
+hchart(resource_quantity_distribution, color = "#66CCFF") %>% 
+                                    hc_title(text = "Resource Quantity Distribution", color = "#66CCFF") %>%
+                                    hc_add_theme(hc_theme_ffx())
+
+```
+
+## School Name
+
+```{r}
+schools_freq <- schools %>%
+                    filter(!is.na(`School Name`)) %>%
+                    group_by(`School Name`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`School Name` = reorder(`School Name`,Total)) %>%
+                    head(10)
+schools_freq
+
+```
+```{r}
+highchart() %>% hc_xAxis(categories = schools_freq$`School Name`,title = list(text = "`School Name`")) %>% 
+                hc_title(text = 'School Name Frequency') %>%
+                hc_add_series(name = "Total", data = schools_freq$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+Observation: 
+
+- Top 3 School Name are `Lincoln Elementary School`, `Washington Elementary School` and `Central Elementary School`.
+
+
+## School Metro Type 
+
+```{r}
+school_metro_type <-schools %>%
+                    filter(!is.na(`School Metro Type`)) %>%
+                    group_by(`School Metro Type`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`School Metro Type` = reorder(`School Metro Type`,Total)) %>%
+                    head(10)
+
+highchart() %>% 
+ hc_chart(type = "pie") %>% 
+ hc_add_theme(hc_theme_ffx()) %>%
+ hc_title(text = "School Metro Type") %>%
+ hc_add_series_labels_values(labels = school_metro_type$`School Metro Type`, values = school_metro_type$Total, name='Count')
+
+```
+
+Observation: 
+
+- Most (`more than 50%`) schools are from `urban & suburban` and `20%` schools are from `rural` area.
+
+## School County
+
+```{r}
+school_county <- schools %>%
+                    filter(!is.na(`School County`)) %>%
+                    group_by(`School County`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`School County` = reorder(`School County`,Total)) %>%
+                    head(10)
+school_county
+
+```
+```{r}
+highchart() %>% hc_xAxis(categories = school_county$`School County`,title = list(text = "School Name")) %>% 
+                hc_title(text = 'School County Frequency') %>%
+                hc_add_series(name = "Total", data = school_county$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+Observation: 
+
+- Top 3 School County are `Los Angeles`, `Cook` and `Harris`.
+
+## School District
+
+```{r}
+school_district <- schools %>%
+                    filter(!is.na(`School District`)) %>%
+                    group_by(`School District`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`School District` = reorder(`School District`,Total)) %>%
+                    head(10)
+school_district
+
+```
+```{r}
+highchart() %>% hc_xAxis(categories = school_district$`School District`,title = list(text = "School District")) %>% 
+                hc_title(text = 'School District Frequency') %>%
+                hc_add_series(name = "Total", data = school_district$Total, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+Observation: 
+
+- Top 3 School District are `New York City Dept Of Ed`, `Los Angeles Unif Sch Dist` and `[County Run]`.
+
+## Teacher Prefix
+
+```{r}
+teacher_prefix <-teachers %>%
+                    filter(!is.na(`Teacher Prefix`)) %>%
+                    group_by(`Teacher Prefix`) %>%
+                    summarise(Total = n()) %>%
+                    arrange(desc(Total)) %>%
+                    ungroup() %>%
+                    mutate(`Teacher Prefix` = reorder(`Teacher Prefix`,Total)) %>%
+                    head(10)
+
+highchart() %>% 
+ hc_chart(type = "pie") %>% 
+ hc_add_theme(hc_theme_ffx()) %>%
+ hc_title(text = "Teacher Prefix") %>%
+ hc_add_series_labels_values(labels = teacher_prefix$`Teacher Prefix`, values = teacher_prefix$Total, name='Count')
+
+```
+
+Observation: 
+
+- Top 3 Teacher Prefix are `Mrs.`, `Ms.` and `Mr`.
+
+## Teacher First Project Posted Date
+
+```{r}
+teachers %>% group_by(`Teacher First Project Posted Date`) %>% 
+             summarise(Total = n()) %>% 
+             hchart("line", hcaes(x = `Teacher First Project Posted Date`, y = Total)) %>%
+             hc_title(text = "Teacher First Project Posted Timeseries") %>%
+            hc_add_theme(hc_theme_ffx())
+
+```
+
+# C. Feature Engineering 
+
+## a. Time duration between Project Posted vs Project Fully Funded
+
+```{r}
+duration <- as.numeric(projects$`Project Fully Funded Date`-projects$`Project Posted Date`)
+
+hchart(duration, color = "#66CCFF") %>% 
+                                    hc_title(text = "Time duration Distribution") %>%
+                                    hc_add_theme(hc_theme_ffx())
+
+```
+
+## b. Text Analysis of Project Essay
+
+This section we will try to analyse text ie. Project Essay using tidytext. The tidy text format is being defined as a table with one token per row; with a token being a word or another meaningful unit of text (paraphrased). Through tidy text we can use the powerful tools of the tidyverse to process and analyse text files.
+
+Due to large size of data, I am taking only small sample from the data.
+
+```{r}
+#Taking sample project because data size is too much !
+temp_projects <- sample_n(projects,100000)
+
+essay_into_word <- temp_projects %>% select(`Project ID` ,`Project Essay`) %>% unnest_tokens(word, `Project Essay`)
+project_id_current_status <- temp_projects %>% select(`Project ID` , `Project Current Status`)
+
+```
+* **Word Frequency**
+
+Lets look at the overall most popular words and their frequencies. This is our first application of tidyverse and highcharter tools to text data:
+
+```{r}
+
+essay_into_word_freq <- essay_into_word %>% 
+                            filter(!word %in% stop_words$word) %>%
+                            count(word,sort = TRUE) %>%
+                            ungroup()  %>%
+                            mutate(word = reorder(word, n)) %>%
+                            head(30)
+
+highchart() %>% hc_xAxis(categories = essay_into_word_freq$word,title = list(text = "Project Essay Word")) %>% 
+                hc_title(text = 'Project Essay Word Frequency') %>%
+                hc_add_series(name = "Count", data = essay_into_word_freq$n, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+```{r}
+project_id_essay_current_status <- full_join(essay_into_word, project_id_current_status, by = "Project ID")
+data("stop_words")
+project_id_essay_current_status <- project_id_essay_current_status %>%
+                                              anti_join(stop_words, by = "word") %>%
+                                              filter(str_detect(word, "[a-z]"))
+
+```
+
+* **TF-IDF analysis**
+
+In information retrieval, tf–idf or TFIDF, short for term frequency–inverse document frequency, is a numerical statistic that is intended to reflect how important a word is to a document in a collection or corpus. It is often used as a weighting factor in searches of information retrieval, text mining, and user modeling. The tf-idf value increases proportionally to the number of times a word appears in the document and is offset by the frequency of the word in the corpus, which helps to adjust for the fact that some words appear more frequently in general. Tf-idf is one of the most popular term-weighting schemes today; 83% of text-based recommend-er systems in digital libraries use tf-idf.
+
+- TF stands for term frequency; essentially how often a word appears in the text. 
+- IDF means inverse document frequency. Here, we give more emphasis to words that are rare within a collection of documents.
+- Both measures can be combined into TF-IDF, a heuristic index telling us how frequent a word is in a certain context within the context of a larger document.
+
+
+```{r}
+frequency <-project_id_essay_current_status %>%
+                                      count(`Project Current Status`, word)
+
+
+tf_idf <- frequency %>%
+  bind_tf_idf(word, `Project Current Status`, n)
+  tf_idf %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  top_n(20, tf_idf) %>%
+  ggplot(aes(word, tf_idf, fill = `Project Current Status`)) +
+  geom_col() +
+  labs(x = NULL, y = "tf-idf") +
+  coord_flip()+
+  theme_bw()
+```
+
+* **TF-IDF analysis: Characteristic terms in each individual Project Current Status Class**
+
+```{r}
+tf_idf %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  group_by(`Project Current Status`) %>%
+  top_n(10, tf_idf) %>%
+  ungroup() %>%  
+  ggplot(aes(word, tf_idf, fill = `Project Current Status`)) +
+  geom_col() +
+  labs(x = NULL, y = "tf-idf") +
+  theme(legend.position = "none") +
+  facet_wrap(~ `Project Current Status`, ncol = 2, scales = "free") +
+  coord_flip()+
+  theme_bw()
+```
+
+* **Word Pair Frequencies: N-Grams**
+
+In a similar way as measuring the frequencies of individual words we can also study the properties of groups of words that occur together (like “statistical analysis”). This gives us an idea about the (typical) relationships between words in a certain document.
+
+```{r}
+essay_into_word_n_gram <- temp_projects %>% select(`Project ID` ,`Project Essay`) %>% unnest_tokens(bigram, `Project Essay`, token = "ngrams", n = 2)
+project_id_essay_current_status_n_grams <- full_join(essay_into_word_n_gram, project_id_current_status, by = "Project ID")
+```
+
+
+```{r}
+bi_sep <- essay_into_word_n_gram %>%
+          separate(bigram, c("word1", "word2"), sep = " ")
+
+bi_filt <- bi_sep %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# for later
+bigram_counts <- bi_filt %>%
+  count(word1, word2, sort = TRUE)
+
+essay_into_word_n_gram <- bi_filt %>%
+                          unite(bigram, word1, word2, sep = " ")
+```
+
+* **TF-IDF analysis: N-Grams**
+
+
+```{r}
+tf_idf_n_gram <-  project_id_essay_current_status_n_grams %>%
+                  count(`Project Current Status`, bigram) %>%
+                  bind_tf_idf(bigram, `Project Current Status`, n) %>%
+                  arrange(desc(tf_idf))
+                  
+tf_idf_n_gram %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(bigram = factor(bigram, levels = rev(unique(bigram)))) %>%
+  group_by(`Project Current Status`) %>%
+  top_n(10, tf_idf) %>%
+  ungroup() %>%  
+  ggplot(aes(bigram, tf_idf, fill = `Project Current Status`)) +
+  geom_col() +
+  labs(x = NULL, y = "tf-idf") +
+  theme(legend.position = "none") +
+  facet_wrap(~ `Project Current Status`, ncol = 2, scales = "free") +
+  coord_flip()+
+  theme_bw()
+
+```
+
+* **Networks of Project Essay** 
+
+We can use `pairwise_count()` from the `widyr` package to count how many times each pair of words occurs together in an essay field.
+
+```{r}
+temp_projects <- sample_n(projects,10000)
+essay_into_word <- temp_projects %>% select(`Project ID` ,`Project Essay`) %>% unnest_tokens(word, `Project Essay`) %>% anti_join(stop_words)
+
+names(essay_into_word) <- c("id","word")
+essay_into_word <- as.tibble(essay_into_word)
+
+essay_word_pair <- essay_into_word %>% 
+                      pairwise_count(word, id, sort = TRUE, upper = FALSE)
+                      
+set.seed(1234)
+essay_word_pair %>%
+  filter(n >= 3000) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = unit(0.2, "lines")) +
+  theme_void()
+
+```
+
+* **Networks of Project Title** 
+
+We can use `pairwise_count()` from the `widyr` package to count how many times each pair of words occurs together in a title field.
+
+```{r}
+title_into_word <- temp_projects %>% select(`Project ID` ,`Project Title`) %>% unnest_tokens(word, `Project Title`) %>% anti_join(stop_words)
+
+names(title_into_word) <- c("id","word")
+title_into_word <- as.tibble(title_into_word)
+title_into_pair <- title_into_word %>% 
+                      pairwise_count(word, id, sort = TRUE, upper = FALSE)
+                      
+set.seed(1234)
+title_into_pair %>%
+  filter(n >= 20) %>%
+  graph_from_data_frame() %>%
+  ggraph(layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "darkred") +
+  geom_node_point(size = 5) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = unit(0.2, "lines")) +
+  theme_void()
+
+```
+
+
+# D. Summary/Conclusions
+
+- Donation Amount
+    + **25% Donation** amount were between **0-10 USD** 
+    + **55**% Donation amount were between **0-30 USD**
+    + This means number of donors(**more than 50%**) were donating money less then **30 USD** at a time.
+
+- Donation Included Optional Donation
+    + **85%** donation included optional donation.
+
+- Donor Is Teacher
+    + **90%** donors are not Teacher.
+
+- Donors City
+    + Top 3 Donor City are
+        + Chicago
+        + New York
+        + Brooklyn
+
+- Donors State
+    + Top 3 Donors State are
+        + California
+        + New York
+        + Texas
+
+- Project Type
+    + Most Projects are **Teacher-Led** Type.
+
+- Project Title
+    + Top 3 Project Title are
+        + Flexible Seating
+        + Can You Hear Me Now?
+        + Technology in the Classroom
+
+- Project Subject Category
+    + Top Project Subject Categories are
+        + Literacy & Language
+        + Math & Science
+
+- Project Subject Subcategory
+    + Top Project Subject Subcategories are
+        + Literacy
+        + Mathematics
+        + Writing
+
+- Project Resource Category
+    + Top 3 Project Resource Category are
+        + Supplies
+        + Technology
+        + Books
+
+- Project Posted Date
+    + **August**, **September** and **October** are top 3 months where most projects were posted.
+
+- Project Cost
+    + Most of projects cost were between **0-600 USD**.
+
+- Project Current Status
+    + More than **80%** projects are Fully Funded.
+
+- Resource Item
+    + Top 3 Resource Item are 
+        + trip
+        + standard shipping
+        + apple ipad mini wi-fi - tablet - ios 6 - 16 gb - 7.9
+
+- School Name
+    + Top 3 School Name are
+        + Lincoln Elementary School
+        + Washington Elementary School
+        + Central Elementary School
+
+- School Metro Type
+    + Most (`more than 50%`) schools are from **urban & suburban**
+    + `20%` schools are from **rural** area
+
+- School County
+    + Top 3 School County are 
+        + Los Angeles
+        + Cook
+        + Harris
+
+- School District
+    + Top 2 School District are
+        + New York City Dept Of Ed
+        + Los Angeles Unif Sch Dist
+
+- Teacher Prefix
+    + Top 3 Teacher Prefix are
+        + Mrs.
+        + Ms.
+        + Mr.
+
+
+
+# E. Recommender system
+
+```{r}
+
+project_donor <- donations %>% select("Project ID","Donor ID")
+project_subjectCategory <- projects %>% select("Project ID","Project Subject Category Tree")
+project_donor_category <- full_join(project_donor, project_subjectCategory, by = "Project ID")
+
+project_donor_category_final <- project_donor_category %>% 
+                                mutate(`Project Subject Category Tree` = strsplit(as.character(`Project Subject Category Tree`), ",")) %>% 
+                                unnest(`Project Subject Category Tree`)
+
+# returns string w/o leading whitespace
+trim.leading <- function (x)  sub("^\\s+", "", x)
+
+# returns string w/o trailing whitespace
+trim.trailing <- function (x) sub("\\s+$", "", x)
+
+# returns string w/o leading or trailing whitespace
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+
+project_donor_category_final$`Project Subject Category Tree` <- trim(project_donor_category_final$`Project Subject Category Tree`)
+
+project_donor_category_final_sample <- sample_n(project_donor_category_final, 10000)
+
+project_donor_category_final_sample_table <- project_donor_category_final_sample %>%    filter(!is.na(`Donor ID`)) %>%
+                                                                                        filter(!is.na(`Project Subject Category Tree`)) %>%
+                                                                                        group_by(`Donor ID`,`Project Subject Category Tree`) %>%
+                                                                                        summarise(Total = n()) %>%
+                                                                                        arrange(desc(Total)) %>%
+                                                                                        ungroup()
+
+# count of number of donation and convert into Rating b/w 1-5
+range15 <- function(x){((x-min(x))/(max(x)-min(x)))*5}
+#project_donor_category_final_sample_table$Total <- range15(project_donor_category_final_sample_table$Total)
+
+dimension_names <- list(donor_id = sort(unique(project_donor_category_final_sample_table$`Donor ID`)), category = sort(unique(project_donor_category_final_sample_table$`Project Subject Category Tree`)))
+#lengths(dimension_names)
+ratingmat <- spread(select(project_donor_category_final_sample_table, `Project Subject Category Tree`, `Donor ID`,Total), `Project Subject Category Tree`, Total) %>% select(-`Donor ID`)
+ratingmat$`<NA>` <- NULL
+#dim(ratingmat)
+ratingmat <- as.matrix(ratingmat)
+dimnames(ratingmat) <- dimension_names
+ratingmat[1:5, 1:9]
+
+```
+
+Recommender systems typically produce a list of recommendations in one of two ways – through collaborative filtering or through content-based filtering (also known as the personality-based approach).Collaborative filtering approaches build a model from a user's past behaviour (items previously purchased or selected and/or numerical ratings given to those items) as well as similar decisions made by other users. This model is then used to predict items (or ratings for items) that the user may have an interest in. Content-based filtering approaches utilize a series of discrete characteristics of an item in order to recommend additional items with similar properties. These approaches are often combined (see Hybrid Recommender Systems).
+
+## What is the distribution of number of donation in each category+donor?
+
+```{r}
+
+number_of_donation_distribution <- project_donor_category_final_sample_table %>% filter(Total <= 50)
+hchart(hist(number_of_donation_distribution$Total, plot = FALSE), color = "#66CCFF", name='Count') %>% 
+                                    hc_title(text = "No of Donations in Category+Donor Distribution", color = "#66CCFF") %>%
+                                    hc_add_theme(hc_theme_ffx())
+
+```
+
+## Number of number of donation per donor
+
+```{r}
+
+number_of_donations_per_donor_df <- project_donor_category_final_sample_table %>% 
+                                                                  group_by(`Donor ID`) %>% 
+                                                                  summarize(number_of_donations_per_donor = n())
+hchart(hist(number_of_donations_per_donor_df$number_of_donations_per_donor, plot = FALSE), color = "#66CCFF", name='Count') %>% 
+hc_title(text = "No of Donations per donor", color = "#66CCFF") %>%
+hc_add_theme(hc_theme_ffx())
+
+```
+
+## Distribution of mean number of donation
+
+```{r}
+
+number_of_donations_per_donor_df <- project_donor_category_final_sample_table %>% 
+                                                                  group_by(`Donor ID`) %>% 
+                                                                  summarize(number_of_donations_per_donor = mean(Total))
+hchart(hist(number_of_donations_per_donor_df$number_of_donations_per_donor, plot = FALSE), color = "#66CCFF", name='Count') %>% 
+hc_title(text = "Mean No of Donations per donor", color = "#66CCFF") %>%
+hc_add_theme(hc_theme_ffx())
+
+```
+
+## Number of donations per category
+
+```{r}
+
+donation_per_category <- project_donor_category_final_sample_table %>% 
+                                  group_by(`Project Subject Category Tree`) %>% 
+                                  summarize(number_of_donation_per_category = n()) %>%
+                                  arrange(desc(number_of_donation_per_category))
+head(donation_per_category,9)
+
+```
+
+```{r}
+
+highchart() %>% hc_xAxis(categories = donation_per_category$`Project Subject Category Tree`,title = list(text = "Category")) %>% 
+                hc_title(text = 'Number of donations per category') %>%
+                hc_add_series(name = "Total", data = donation_per_category$number_of_donation_per_category, color = "#66CCFF") %>% 
+                hc_add_theme(hc_theme_ffx()) %>%
+                hc_chart(type = "bar", options3d = list(enabled = TRUE, beta = 1, alpha = 1))
+
+```
+
+
+## Collaborative Filtering
+
+One approach to the design of recommender systems that has wide use is collaborative filtering. Collaborative filtering methods are based on collecting and analyzing a large amount of information on users’ behaviors, activities or preferences and predicting what users will like based on their similarity to other users. A key advantage of the collaborative filtering approach is that it does not rely on machine analyzable content and therefore it is capable of accurately recommending complex items such as movies without requiring an "understanding" of the item itself.
+
+* What I described above is exactly the main idea of the so called user-based collaborative filtering. It works as follows:
+
+- You first identify other donor similar to the current donor in terms of their ratings(count of number of donation) on the same set of Project Subject Category.
+- If you found those similar donors you take their average rating(count of number of donation) of Project Subject Categories the current domor has not yet read.
+- And recommend those Subject Categories projects with the highest average rating(count of number of donation) to him.
+
+
+
+* **Step 1: Find similar donors**
+
+For this step we select donors that have in common that they donated the same projects. To make it easier let’s select one example donor “d1”. First we select donors that donated at least one project that donor “d1” also donated.
+
+```{r}
+
+current_donor <- project_donor_category_final_sample_table$`Donor ID`[1]
+rated_items <- which(!is.na((as.data.frame(ratingmat[current_donor, ]))))
+selected_donor <- names(which(apply(!is.na(ratingmat[ ,rated_items]), 1, sum) >= 2))
+head(selected_donor, 40)
+
+```
+
+```{r}
+
+rmat <- ratingmat[selected_donor, ]
+donor_mean_ratings <- rowMeans(rmat,na.rm=T)
+rmat <- rmat - donor_mean_ratings
+
+```
+
+```{r}
+
+similarities <- cor(t(rmat[rownames(rmat)!=current_donor, ]), rmat[current_donor, ], use = 'pairwise.complete.obs')
+sim <- as.vector(similarities)
+names(sim) <- rownames(similarities)
+res <- sort(sim, decreasing = TRUE)
+head(res, 15)
+
+```
+
+- **Visualizing similarities between users**
+
+```{r}
+
+options(warn=-1)
+sim_mat <- cor(t(rmat), use = 'pairwise.complete.obs')
+random_donor <- selected_donor[1:10]
+x <- sim_mat[c(current_donor, random_donor), c(current_donor, random_donor)]
+
+## make igraph object
+test.gr <- graph_from_adjacency_matrix(x, mode="undirected", weighted=T)
+
+## convert to VisNetwork-list
+test.visn <- toVisNetworkData(test.gr)
+
+## copy column "weight" to new column "value" in list "edges"
+
+test.visn$edges$value <- test.visn$edges$weight
+
+visNetwork(test.visn$nodes, test.visn$edges) %>%
+  visIgraphLayout(layout = "layout_in_circle") 
+  
+```
+
+
+# More To Come. Styed Tuned !!
+If there are any suggestions/changes you would like to see in the Kernel please let me know. !
+
+<center><img src=https://www.gatesnotes.com/-/media/Images/Articles/About-Bill-Gates/Donors-Choose/Giving_2012/Donors_choose_700.jpg"></center>
